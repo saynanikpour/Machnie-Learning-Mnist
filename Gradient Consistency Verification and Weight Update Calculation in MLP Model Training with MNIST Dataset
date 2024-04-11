@@ -1,0 +1,74 @@
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.datasets import mnist
+
+# بخش الف: اطمینان از یکنواختی گرادیان‌ها بین یک بچ تصادفی و کل مجموعه داده
+
+# بارگیری مجموعه داده MNIST
+(x_train, y_train), (x_test, y_test) = mnist.load_data()
+
+# نرمال‌سازی مقادیر پیکسل برای دید بهینه
+x_train, x_test = x_train / 255.0, x_test / 255.0
+
+# تبدیل برچسب‌ها به کدگذاری one-hot
+y_train_onehot = tf.keras.utils.to_categorical(y_train, 10)
+
+# تعریف مدل MLP
+model = tf.keras.models.Sequential([
+    tf.keras.layers.Flatten(input_shape=(28, 28)),
+    tf.keras.layers.Dense(120, activation='relu'),
+    tf.keras.layers.Dense(84, activation='relu'),
+    tf.keras.layers.Dense(10, activation='softmax')
+])
+
+# کامپایل مدل
+model.compile(optimizer='adam',
+              loss='categorical_crossentropy',
+              metrics=['accuracy'])
+
+# محاسبه گرادیان‌ها
+with tf.GradientTape() as tape:
+    predictions = model(x_train[:100])  # استفاده از تنها یک زیرمجموعه برای سرعت
+    loss = tf.reduce_mean(model.compiled_loss(y_train_onehot[:100], predictions))
+
+# دریافت گرادیان‌ها
+gradients = tape.gradient(loss, model.trainable_variables)
+
+# جمع کردن تمامی گرادیان‌ها در کل مجموعه داده
+total_gradients = [tf.reduce_sum(gradient).numpy() for gradient in gradients]
+total_gradients = np.sum(total_gradients)
+
+print("Total gradients from a batch:", total_gradients)
+
+# بخش ب: محاسبه تعداد به‌روزرسانی وزن در طی 5 ایپاک
+
+# محاسبه تعداد بچ‌ها
+num_batches = len(x_train) // 200
+
+# محاسبه تعداد به‌روزرسانی وزن در 5 ایپاک
+num_epochs = 5
+updates_per_epoch = num_batches // num_epochs
+
+print("Number of weight updates per epoch:", updates_per_epoch)
+
+# بخش ج و د: آموزش مدل و به‌روزرسانی وزن‌ها
+
+for epoch in range(num_epochs):
+    print("epoch:", epoch + 1)
+    for batch in range(num_batches):
+        # بخش ج: محاسبه هزینه
+        x_batch = x_train[batch * 200:(batch + 1) * 200]
+        y_batch = y_train_onehot[batch * 200:(batch + 1) * 200]
+        loss = model.train_on_batch(x_batch, y_batch)
+
+        # بخش د: به‌روزرسانی وزن‌ها از طریق پس‌انتشار
+        with tf.GradientTape() as tape:
+            predictions = model(x_batch)
+            loss = tf.reduce_mean(model.compiled_loss(y_batch, predictions))
+        gradients = tape.gradient(loss, model.trainable_variables)
+        model.optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+
+    # بخش ه: محاسبه دقت و هزینه آزمون
+    test_loss, test_accuracy = model.evaluate(x_test, tf.keras.utils.to_categorical(y_test, 10))
+    print("Test loss:", test_loss)
+    print("test accuracy:", test_accuracy)
